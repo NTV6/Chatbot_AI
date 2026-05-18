@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+PyMuPDF
+openai
+python-dotenv
+sqlalchemy
+python-multipart
+pymysql
+chromadb
+langchain-text-splitters
+tiktoken

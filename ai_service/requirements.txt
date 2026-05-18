@@ -1,0 +1,5 @@
+chromadb
+openai
+python-dotenv
+langchain-text-splitters
+tiktoken
