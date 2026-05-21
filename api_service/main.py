@@ -31,6 +31,9 @@ class ChatRequest(BaseModel):
     conversation_id: int
     question: str
 
+class DeleteFileRequest(BaseModel):
+    filename: str
+
 def get_db():
     db = SessionLocal()
     try:
@@ -219,22 +222,18 @@ async def upload_pdf(file: UploadFile = File(...)):
         "preview": text[:500]
     }
 
-
-class DeleteFileRequest(BaseModel):
-    filename: str
-
 @app.post("/delete_file")
 def delete_file(req: DeleteFileRequest):
     uploads_dir = "uploads"
     filename = os.path.basename(req.filename)
     file_path = os.path.join(uploads_dir, filename)
 
-    # 1. Xóa khỏi ChromaDB trước
+    # 1. Xóa khỏi DB trước
     try:
         delete_pdf_chunks(filename)
-        print(f"Deleted chunks of {filename} from ChromaDB")
+        print(f"Deleted chunks of {filename} from DB")
     except Exception as e:
-        print(f"Lỗi xóa ChromaDB: {e}")
+        print(f"Lỗi xóa DB: {e}")
 
     # 2. Xóa file vật lý
     if os.path.exists(file_path):

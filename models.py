@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from config_db import Base
@@ -22,3 +22,13 @@ class Message(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     conversation = relationship("Conversation", back_populates="messages")
+
+class DocumentChunk(Base):
+    __tablename__ = "document_chunks"
+
+    id = Column(String(36), primary_key=True)  # UUID
+    source = Column(String(255), index=True)
+    chapter = Column(String(500))
+    content = Column(Text)
+    embedding = Column(JSON)  # lưu list[float] dưới dạng JSON
+    created_at = Column(DateTime, default=datetime.utcnow)
