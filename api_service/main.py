@@ -2,7 +2,7 @@ import os
 import fitz
 import shutil
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
-from ai_service.rag import query_docs, add_pdf_text, delete_pdf_chunks
+from ai_service.rag import query_docs, add_document_text, delete_pdf_chunks
 from pydantic import BaseModel
 from openai import OpenAI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +10,8 @@ from dotenv import load_dotenv
 from config_db import SessionLocal, engine
 from models import Base, Message, Conversation
 from sqlalchemy.orm import Session
+import openpyxl
+from docx import Document
 
 load_dotenv()
 
@@ -167,51 +169,49 @@ def delete_conversation(id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Deleted"}
 
-@app.post("/upload_pdf")
-async def upload_pdf(file: UploadFile = File(...)):
-     # Validate file
-    if not file.filename.endswith(".pdf"):
-        raise HTTPException(
-            status_code=400,
-            detail="Chỉ hỗ trợ file PDF"
-        )
+@app.post("/upload_file")
+async def upload_file(file: UploadFile = File(...)):
+    # Validate file type
+    allowed_ext = [".pdf", ".docx", ".xlsx"]
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in allowed_ext:
+        raise HTTPException(status_code=400, detail="Chỉ hỗ trợ file PDF, DOCX, XLSX")
 
-    # Tạo thư mục uploads nếu chưa có
     os.makedirs("uploads", exist_ok=True)
-
-    # Đường dẫn file
     filename = os.path.basename(file.filename)
     file_path = f"uploads/{filename}"
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-    try:
-        doc = fitz.open(file_path)
-        text = ""
-        for page in doc:
-            text += page.get_text()
 
-          # Thêm log này để kiểm tra
+    text = ""
+    try:
+        if ext == ".pdf":
+            doc = fitz.open(file_path)
+            for page in doc:
+                text += page.get_text()
+        elif ext == ".docx":
+            doc = Document(file_path)
+            for para in doc.paragraphs:
+                text += para.text + "\n"
+        elif ext == ".xlsx":
+            wb = openpyxl.load_workbook(file_path, read_only=True)
+            for sheet in wb.worksheets:
+                for row in sheet.iter_rows(values_only=True):
+                    row_text = "\t".join([str(cell) if cell is not None else "" for cell in row])
+                    text += row_text + "\n"
+        else:
+            raise Exception("Unsupported file type")
         print("EXTRACTED TEXT SAMPLE:", text[:1000])
         print("TOTAL LENGTH:", len(text))
-
     except Exception as e:
-         if os.path.exists(file_path):
+        if os.path.exists(file_path):
             os.remove(file_path)
-    
-         raise HTTPException(
-            status_code=400,
-            detail=f"Lỗi đọc PDF: {str(e)}"
-        )
+        raise HTTPException(status_code=400, detail=f"Lỗi đọc file: {str(e)}")
 
-    # Validate text
     if not text.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="PDF không có nội dung"
-        )
+        raise HTTPException(status_code=400, detail="File không có nội dung")
 
-    # Thêm vào vector DB
-    add_pdf_text(
+    add_document_text(
         text=text,
         file_name=filename
     )

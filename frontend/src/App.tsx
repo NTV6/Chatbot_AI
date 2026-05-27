@@ -105,41 +105,33 @@ function App() {
     }
   };
 
-  const handleUploadPDF = async (
+  const handleUploadFile = async (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
     const file = e.target.files?.[0];
-
     if (!file) return;
-
     setUploading(true);
     setUploadResult(null);
-
     const formData = new FormData();
     formData.append("file", file);
-
     try {
       const res = await fetch(
-        "http://localhost:8000/upload_pdf",
+        "http://localhost:8000/upload_file",
         {
           method: "POST",
           body: formData,
         }
       );
-
       const data = await res.json();
-
       if (!res.ok) {
         setUploadResult(
           data.detail || "Upload thất bại"
         );
         return;
       }
-
       setUploadResult(
         `Upload thành công: ${data.file}`
       );
-
       setUploadedFiles((prev) => {
         if (prev.includes(data.file)) return prev; // Không thêm nếu đã có
         const updated = [...prev, data.file];
@@ -148,14 +140,11 @@ function App() {
       });
     } catch (err) {
       console.error(err);
-
       setUploadResult(
         "Lỗi kết nối tới server"
       );
-
     } finally {
       setUploading(false);
-
       // reset input
       e.target.value = "";
     }
@@ -203,11 +192,11 @@ function App() {
 
           <label
             className="py-2 px-2 hover:bg-gray-300 rounded w-full text-left font-semibold">
-            + Tải lên PDF
+            + Tải lên file
             <input
               type="file"
-              accept="application/pdf"
-              onChange={handleUploadPDF}
+              accept=".pdf,.docx,.xlsx"
+              onChange={handleUploadFile}
               className="hidden"
             />
           </label>

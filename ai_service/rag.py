@@ -77,8 +77,18 @@ def query_docs(question: str) -> str:
 
         scored.append((score, f"{header}\n{chunk.content}"))
 
-    scored.sort(key=lambda x: x[0], reverse=True)
-    contexts = [text for _, text in scored[:6]]
+        scored.sort(key=lambda x: x[0], reverse=True)
+    # Giới hạn tổng số từ (tokens) context trả về, ví dụ 2000 từ
+    MAX_WORDS = 2000
+    contexts = []
+    total_words = 0
+    for _, text in scored:
+        num_words = len(text.split())
+        if total_words + num_words > MAX_WORDS:
+            break
+        contexts.append(text)
+        total_words += num_words
+    print(f"[RAG] Tổng số từ context trả về: {total_words}")
     return "\n\n".join(contexts)
 
 # ── Chapter extraction (giữ nguyên logic cũ) ─────────────────────────────────
@@ -126,7 +136,7 @@ def extract_chapters(text: str) -> list[dict]:
 
 # ── Ingest ────────────────────────────────────────────────────────────────────
 
-def add_pdf_text(text: str, file_name: str):
+def add_document_text(text: str, file_name: str):
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     chapters = extract_chapters(text)
 
