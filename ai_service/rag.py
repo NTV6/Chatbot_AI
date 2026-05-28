@@ -77,7 +77,7 @@ def query_docs(question: str) -> str:
 
         scored.append((score, f"{header}\n{chunk.content}"))
 
-        scored.sort(key=lambda x: x[0], reverse=True)
+    scored.sort(key=lambda x: x[0], reverse=True)
     # Giới hạn tổng số từ (tokens) context trả về, ví dụ 2000 từ
     MAX_WORDS = 2000
     contexts = []

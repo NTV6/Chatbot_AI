@@ -2,6 +2,7 @@ import os
 import fitz
 import shutil
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
+from requests import session
 from ai_service.rag import query_docs, add_document_text, delete_pdf_chunks
 from pydantic import BaseModel
 from openai import OpenAI
@@ -12,6 +13,12 @@ from models import Base, Message, Conversation
 from sqlalchemy.orm import Session
 import openpyxl
 from docx import Document
+from mcp import ClientSession
+from mcp.client.sse import sse_client
+import asyncio
+import time
+import json
+
 
 load_dotenv()
 
@@ -50,6 +57,7 @@ def read_root():
 @app.post("/chat")
 def chat(req: ChatRequest, db: Session = Depends(get_db)):
 
+    start = time.time()
     user_msg = Message(
         conversation_id=req.conversation_id,
         role="user",
@@ -65,8 +73,11 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)):
     if conversation and conversation.title == "New Chat":
         conversation.title = req.question[:20]
 
-    context = query_docs(req.question)
-    print("CONTEXT:", context)
+    # context = asyncio.run(
+    #     search_from_mcp(req.question)
+    # ) 
+    # print("CONTEXT:", context)
+    print(time.time() - start, 'seconds')
     history = (
         db.query(Message)
         .filter(Message.conversation_id == req.conversation_id)
@@ -100,14 +111,15 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)):
         - Với code phải có comment giải thích
         """
 
-    user_prompt = f"""
-    === CONTEXT ===
-    {context}
+    # user_prompt = f"""
+    # === CONTEXT ===
+    # {context}
 
-    === USER QUESTION ===
-    {req.question}
-    """
-
+    # === USER QUESTION ===
+    # {req.question}
+    # """
+    user_prompt = req.question
+    
     messages = [
         {
             "role": "system",
@@ -125,10 +137,45 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)):
     response = openai_client.chat.completions.create(
         model="gpt-4o-mini",
         messages=messages,
+        tools=tools,
+        tool_choice="auto",
         temperature=0.3
     )
+    assistant_message = response.choices[0].message
+    
+    if assistant_message.tool_calls:
 
-    answer = response.choices[0].message.content
+        tool_call = assistant_message.tool_calls[0]
+
+        tool_args = json.loads(
+            tool_call.function.arguments
+        )
+
+        rag_result = asyncio.run(
+            search_from_mcp(tool_args["question"])
+        )
+
+        messages.append(assistant_message)
+
+        messages.append({
+            "role": "tool",
+            "tool_call_id": tool_call.id,
+            "name": "search_documents",
+            "content": str(rag_result)
+        })
+
+        final_response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages
+        )
+
+        answer = final_response.choices[0].message.content
+    else:
+        answer = assistant_message.content
+
+
+
+    # answer = response.choices[0].message.content
 
     ai_msg = Message(
         conversation_id=req.conversation_id,
@@ -243,3 +290,36 @@ def delete_file(req: DeleteFileRequest):
             raise HTTPException(status_code=500, detail=f"Lỗi xóa file: {str(e)}")
 
     return {"message": "File deleted"}
+
+async def search_from_mcp(question: str):
+
+    async with sse_client("http://127.0.0.1:8001/sse") as streams:
+
+        async with ClientSession(*streams) as session:
+            await session.initialize()
+
+            result = await session.call_tool(
+                "search_documents",
+                {"question": question}
+            )
+
+            return result.content[0].text
+        
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search_documents",
+            "description": "Search information from uploaded documents",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string"
+                    }
+                },
+                "required": ["question"]
+            }
+        }
+    }
+]
